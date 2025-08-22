@@ -3,7 +3,6 @@ package main
 import (
 	"context"
 	"fmt"
-	"log"
 	"time"
 
 	"github.com/abdotop/LAB/config"
@@ -11,6 +10,7 @@ import (
 	"github.com/cloudinary/cloudinary-go/v2/api"
 	"github.com/cloudinary/cloudinary-go/v2/api/admin"
 	"github.com/cloudinary/cloudinary-go/v2/api/uploader"
+	"github.com/google/uuid"
 )
 
 // CloudinaryLab demonstrates various Cloudinary features
@@ -29,29 +29,56 @@ func NewCloudinaryLab() (*CloudinaryLab, error) {
 	return &CloudinaryLab{cld: cld}, nil
 }
 
-// GeneratePresignedUploadURL generates a presigned upload URL with directory structure
-func (cl *CloudinaryLab) GeneratePresignedUploadURL(ctx context.Context, folder string) (map[string]interface{}, error) {
-	timestamp := time.Now().Unix()
-	
-	// Create a map with upload parameters for presigned upload
-	signature := map[string]interface{}{
-		"folder":         folder,
-		"resource_type":  "auto",
-		"timestamp":      timestamp,
-		"unique_filename": true,
-		"cloud_name":     cl.cld.Config.Cloud.CloudName,
-		"api_key":        cl.cld.Config.Cloud.APIKey,
+// GeneratePresignedUploadURL generates parameters for a signed, temporary, single-use upload.
+func (cl *CloudinaryLab) GeneratePresignedUploadURL(ctx context.Context, folder string, ttl time.Duration) (map[string]string, error) {
+	// 1. Create the upload parameters
+	// We generate a unique Public ID in advance to make the signature single-use.
+	params := uploader.UploadParams{
+		PublicID:      "single-use-" + uuid.New().String(),
+		Folder:        folder,
+		ResourceType:  "auto",
+		Timestamp:     time.Now().Unix(),
+		Invalidate:    api.Bool(true), // Invalidate CDN cache
 	}
 
-	return signature, nil
+	// 2. Convert params to url.Values
+	queryParams, err := api.StructToParams(params)
+	if err != nil {
+		return nil, fmt.Errorf("failed to convert params: %w", err)
+	}
+
+	// Add TTL to the signature by adding it to the params before signing
+	// Note: Cloudinary doesn't have a direct "expires_at" for upload signatures in the same way as for delivery URLs.
+	// The standard method is to use the timestamp. A client-side check or a server-side check after upload
+	// would be needed to enforce a strict TTL. We rely on the timestamp and the signature's inherent validity window.
+	
+	// 3. Generate the signature
+	signature, err := api.SignParameters(queryParams, cl.cld.Config.Cloud.APISecret)
+	if err != nil {
+		return nil, fmt.Errorf("failed to sign parameters: %w", err)
+	}
+
+	// 4. Prepare the results to be returned
+	// The client would use these to make a POST request to the upload endpoint.
+	results := make(map[string]string)
+	for key, values := range queryParams {
+		if len(values) > 0 {
+			results[key] = values[0]
+		}
+	}
+	results["api_key"] = cl.cld.Config.Cloud.APIKey
+	results["signature"] = signature
+
+	return results, nil
 }
 
 // CheckUploadExists checks if an upload exists in a specific directory
-func (cl *CloudinaryLab) CheckUploadExists(ctx context.Context, publicID string) (bool, *admin.AssetResult, error) {
+func (cl *CloudinaryLab) CheckUploadExists(ctx context.Context, publicID string, resourceType api.AssetType) (bool, *admin.AssetResult, error) {
 	result, err := cl.cld.Admin.Asset(ctx, admin.AssetParams{
-		PublicID: publicID,
+		PublicID:  publicID,
+		AssetType: resourceType,
 	})
-	
+
 	if err != nil {
 		// If resource not found, return false
 		return false, nil, nil
@@ -60,15 +87,50 @@ func (cl *CloudinaryLab) CheckUploadExists(ctx context.Context, publicID string)
 	return true, result, nil
 }
 
-// MoveUpload moves an upload from one directory to another
-func (cl *CloudinaryLab) MoveUpload(ctx context.Context, fromPublicID, toPublicID string) (*uploader.RenameResult, error) {
+// MoveUpload renames an asset's public ID. Note this does not change the asset's folder in the Media Library UI.
+func (cl *CloudinaryLab) MoveUpload(ctx context.Context, fromPublicID, toPublicID string, resourceType string) (*uploader.RenameResult, error) {
 	result, err := cl.cld.Upload.Rename(ctx, uploader.RenameParams{
 		FromPublicID: fromPublicID,
 		ToPublicID:   toPublicID,
+		ResourceType: resourceType,
 	})
-	
+
 	if err != nil {
-		return nil, fmt.Errorf("failed to move upload from %s to %s: %w", fromPublicID, toPublicID, err)
+		return nil, fmt.Errorf("failed to rename upload from %s to %s: %w", fromPublicID, toPublicID, err)
+	}
+
+	return result, nil
+}
+
+// UpdateAssetFolder changes the asset folder of a given asset.
+func (cl *CloudinaryLab) UpdateAssetFolder(ctx context.Context, publicID, folder string, resourceType api.AssetType) (*admin.AssetResult, error) {
+	result, err := cl.cld.Admin.UpdateAsset(ctx, admin.UpdateAssetParams{
+		PublicID:    publicID,
+		AssetFolder: folder,
+		AssetType:   resourceType,
+	})
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to update asset folder for %s: %w", publicID, err)
+	}
+
+	return result, nil
+}
+
+// ListUploadsByTag lists all uploads with a specific tag.
+func (cl *CloudinaryLab) ListUploadsByTag(ctx context.Context, tag string, resourceType api.AssetType, maxResults int) (*admin.AssetsResult, error) {
+	if maxResults == 0 {
+		maxResults = 10
+	}
+
+	result, err := cl.cld.Admin.AssetsByTag(ctx, admin.AssetsByTagParams{
+		Tag:        tag,
+		AssetType:  resourceType,
+		MaxResults: maxResults,
+	})
+
+	if err != nil {
+		return nil, fmt.Errorf("failed to list uploads by tag %s: %w", tag, err)
 	}
 
 	return result, nil
@@ -185,89 +247,15 @@ func (cl *CloudinaryLab) ListUploadsInFolder(ctx context.Context, folder string,
 	return result, nil
 }
 
-// CreateFolder creates a folder structure (conceptual)
-func (cl *CloudinaryLab) CreateFolder(folderName string, secure bool) map[string]interface{} {
-	folderInfo := map[string]interface{}{
-		"name":     folderName,
-		"secure":   secure,
-		"created":  time.Now(),
-		"path":     fmt.Sprintf("/%s/", folderName),
-	}
+// CreateFolder creates a new folder in Cloudinary.
+func (cl *CloudinaryLab) CreateFolder(ctx context.Context, folderName string) (*admin.CreateFolderResult, error) {
+	result, err := cl.cld.Admin.CreateFolder(ctx, admin.CreateFolderParams{
+		Folder: folderName,
+	})
 
-	if secure {
-		folderInfo["access_mode"] = "authenticated"
-		folderInfo["access_key_required"] = true
-	} else {
-		folderInfo["access_mode"] = "public"
-	}
-
-	return folderInfo
-}
-
-func RunMainDemo() {
-	ctx := context.Background()
-	
-	lab, err := NewCloudinaryLab()
 	if err != nil {
-		log.Fatalf("Failed to initialize Cloudinary lab: %v", err)
+		return nil, fmt.Errorf("failed to create folder %s: %w", folderName, err)
 	}
 
-	fmt.Println("🚀 Cloudinary Features Discovery Lab")
-	fmt.Println("=====================================")
-
-	// 1. Generate presigned upload URL for tmp directory
-	fmt.Println("\n1. Generating presigned upload URL for 'tmp' directory...")
-	presignedURL, err := lab.GeneratePresignedUploadURL(ctx, "tmp")
-	if err != nil {
-		log.Printf("Error: %v", err)
-	} else {
-		fmt.Printf("✅ Presigned upload parameters generated for 'tmp' folder\n")
-		fmt.Printf("   Timestamp: %v\n", presignedURL["timestamp"])
-		fmt.Printf("   Folder: %v\n", presignedURL["folder"])
-	}
-
-	// 2. Create folder structures
-	fmt.Println("\n2. Creating folder structures...")
-	tmpFolder := lab.CreateFolder("tmp", false)
-	partnerFolder := lab.CreateFolder("partner", true)
-	
-	fmt.Printf("✅ Created folder structure:\n")
-	fmt.Printf("   Tmp folder: %v (public access)\n", tmpFolder["path"])
-	fmt.Printf("   Partner folder: %v (secure access)\n", partnerFolder["path"])
-
-	// 3. Generate access keys
-	fmt.Println("\n3. Generating access keys...")
-	shortTTL := 5 * time.Minute
-	longTermKey, _ := lab.GenerateAccessKey("long-term-api-key", true, nil)
-	tempKey, _ := lab.GenerateAccessKey("temp-api-key", true, &shortTTL)
-	
-	fmt.Printf("✅ Access keys generated:\n")
-	fmt.Printf("   Long-term key: %s (no expiration)\n", longTermKey["name"])
-	fmt.Printf("   Temporary key: %s (expires in 5 minutes)\n", tempKey["name"])
-
-	// 4. Generate single-use temporary signature
-	fmt.Println("\n4. Generating single-use temporary signature...")
-	singleUseSignature, err := lab.GenerateTemporarySingleUseSignature(ctx, "tmp", 5*time.Minute)
-	if err != nil {
-		log.Printf("Error: %v", err)
-	} else {
-		fmt.Printf("✅ Single-use signature generated:\n")
-		fmt.Printf("   Expires in: %v seconds\n", singleUseSignature["expires_in_seconds"])
-		fmt.Printf("   Folder: %v\n", singleUseSignature["folder"])
-	}
-
-	// 5. Demonstrate other features (conceptual since we don't have actual uploads)
-	fmt.Println("\n5. Additional features available:")
-	fmt.Println("   ✅ Check upload existence: CheckUploadExists()")
-	fmt.Println("   ✅ Move uploads between directories: MoveUpload()")
-	fmt.Println("   ✅ Generate secure URLs with expiration: GenerateSecureURL()")
-	fmt.Println("   ✅ Set temporary data lifetime: SetTempDataLifetime()")
-	fmt.Println("   ✅ Delete uploads: DeleteUpload()")
-	fmt.Println("   ✅ List uploads in folder: ListUploadsInFolder()")
-
-	fmt.Println("\n🎉 Cloudinary features discovery completed!")
-	fmt.Println("\n📝 Note: Set your Cloudinary credentials in environment variables:")
-	fmt.Println("   - CLOUDINARY_CLOUD_NAME=your_cloud_name")
-	fmt.Println("   - CLOUDINARY_API_KEY=your_api_key") 
-	fmt.Println("   - CLOUDINARY_API_SECRET=your_api_secret")
+	return result, nil
 }

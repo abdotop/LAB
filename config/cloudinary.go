@@ -24,6 +24,10 @@ func NewCloudinaryConfig() *CloudinaryConfig {
 
 // NewCloudinaryInstance creates a new Cloudinary instance
 func (c *CloudinaryConfig) NewCloudinaryInstance() (*cloudinary.Cloudinary, error) {
+	if url := os.Getenv("CLOUDINARY_URL"); url != "" {
+		return cloudinary.NewFromURL(url)
+	}
+
 	cld, err := cloudinary.NewFromParams(c.CloudName, c.APIKey, c.APISecret)
 	if err != nil {
 		return nil, err

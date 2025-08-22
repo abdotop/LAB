@@ -14,8 +14,6 @@ func main() {
 	}
 
 	switch os.Args[1] {
-	case "demo":
-		RunMainDemo()
 	case "move":
 		examples.MoveUploadExample()
 	case "ttl":
@@ -23,10 +21,7 @@ func main() {
 	case "secure":
 		examples.SecureAccessExample()
 	case "all":
-		fmt.Println("Running all examples...\n")
-		
-		fmt.Println("=== Main Demo ===")
-		RunMainDemo()
+		fmt.Println("Running all examples...")
 		
 		fmt.Println("\n=== Move Upload Example ===")
 		examples.MoveUploadExample()
@@ -36,6 +31,8 @@ func main() {
 		
 		fmt.Println("\n=== Secure Access Example ===")
 		examples.SecureAccessExample()
+	case "features":
+		runFeatureDemo()
 	default:
 		fmt.Printf("Unknown example: %s\n", os.Args[1])
 		showHelp()
@@ -48,11 +45,11 @@ func showHelp() {
 	fmt.Println("Usage: go run . <example>")
 	fmt.Println("")
 	fmt.Println("Available examples:")
-	fmt.Println("  demo   - Main comprehensive demo")
-	fmt.Println("  move   - Upload movement between directories")
-	fmt.Println("  ttl    - Temporary uploads with TTL")
-	fmt.Println("  secure - Secure directory access")
-	fmt.Println("  all    - Run all examples")
+	fmt.Println("  move     - Upload movement between directories")
+	fmt.Println("  ttl      - Temporary uploads with TTL")
+	fmt.Println("  secure   - Secure directory access")
+	fmt.Println("  all      - Run all examples")
+	fmt.Println("  features - Run the new features demonstration")
 	fmt.Println("")
 	fmt.Println("Note: Set your Cloudinary credentials in environment variables:")
 	fmt.Println("  export CLOUDINARY_CLOUD_NAME=your_cloud_name")
