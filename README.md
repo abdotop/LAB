@@ -69,19 +69,41 @@ export CLOUDINARY_API_SECRET=your_api_secret
 
 #### Main Demo
 ```bash
-go run main.go
+# Build the project
+go build .
+
+# Run comprehensive demo
+./LAB demo
 ```
 
 #### Specific Examples
 ```bash
 # Move upload between directories
-go run examples/move_upload.go
+./LAB move
 
 # Temporary uploads with TTL
-go run examples/temporary_ttl.go
+./LAB ttl
 
 # Secure directory access
-go run examples/secure_access.go
+./LAB secure
+
+# Run all examples
+./LAB all
+
+# Show help
+./LAB
+```
+
+#### Alternative: Direct Go Run
+```bash
+# Run main demo
+go run . demo
+
+# Run specific examples
+go run . ttl
+go run . secure
+go run . move
+go run . all
 ```
 
 ## 📖 Usage Examples
