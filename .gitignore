@@ -7,6 +7,7 @@
 *.dll
 *.so
 *.dylib
+chess-backend
 
 # Test binary, built with `go test -c`
 *.test
@@ -30,3 +31,19 @@ go.work.sum
 # Editor/IDE
 # .idea/
 # .vscode/
+
+# Flutter
+flutter_install/
+frontend/build/
+frontend/.dart_tool/
+frontend/.packages
+frontend/pubspec.lock
+frontend/ios/
+frontend/android/
+frontend/web/
+frontend/windows/
+frontend/macos/
+frontend/linux/
+
+# Generated files
+frontend/lib/**/*.g.dart
