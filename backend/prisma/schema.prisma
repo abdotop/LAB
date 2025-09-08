@@ -1,0 +1,224 @@
+// This is your Prisma schema file,
+// learn more about it in the docs: https://pris.ly/d/prisma-schema
+
+generator client {
+  provider = "prisma-client-js"
+}
+
+datasource db {
+  provider = "postgresql"
+  url      = env("DATABASE_URL")
+}
+
+// Énumérations pour les rôles et statuts
+enum UserRole {
+  SUPER_ADMIN_DGE
+  ADMIN_DGE
+  GESTIONNAIRE_CANDIDATURE
+  MANDATAIRE
+  CITOYEN
+}
+
+enum ElectoralCycleStatus {
+  DRAFT
+  ACTIVE
+  PAUSED
+  CLOSED
+  ARCHIVED
+}
+
+enum CandidateStatus {
+  PENDING
+  APPROVED
+  REJECTED
+  SUSPENDED
+}
+
+enum SponsorshipStatus {
+  ACTIVE
+  CONTESTED
+  CANCELLED
+  FRAUDULENT
+}
+
+enum AuditAction {
+  CREATE
+  UPDATE
+  DELETE
+  APPROVE
+  REJECT
+  SUSPEND
+  LOGIN
+  LOGOUT
+  SPONSOR
+  CONTEST
+}
+
+// Modèle utilisateur principal
+model User {
+  id        String   @id @default(cuid())
+  nin       String   @unique // Numéro d'Identification Nationale
+  phone     String   @unique
+  email     String?  @unique
+  firstName String
+  lastName  String
+  role      UserRole @default(CITOYEN)
+  pinHash   String   // Hash du code PIN à 4 chiffres
+  isActive  Boolean  @default(true)
+  isVerified Boolean @default(false)
+  
+  // Métadonnées
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  lastLogin DateTime?
+  
+  // Relations
+  sponsorships Sponsorship[]
+  candidacies  Candidacy[]
+  auditLogs    AuditLog[]
+  otpSessions  OtpSession[]
+  
+  @@map("users")
+}
+
+// Sessions OTP pour vérification
+model OtpSession {
+  id        String   @id @default(cuid())
+  userId    String
+  code      String
+  purpose   String   // LOGIN, SPONSORSHIP, etc.
+  expiresAt DateTime
+  isUsed    Boolean  @default(false)
+  createdAt DateTime @default(now())
+  
+  user User @relation(fields: [userId], references: [id], onDelete: Cascade)
+  
+  @@map("otp_sessions")
+}
+
+// Cycles électoraux
+model ElectoralCycle {
+  id                String              @id @default(cuid())
+  name              String
+  description       String?
+  startDate         DateTime
+  endDate           DateTime
+  sponsorshipStart  DateTime
+  sponsorshipEnd    DateTime
+  status            ElectoralCycleStatus @default(DRAFT)
+  minSponsorsRequired Int               @default(500)
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  // Relations
+  candidacies  Candidacy[]
+  sponsorships Sponsorship[]
+  
+  @@map("electoral_cycles")
+}
+
+// Candidatures
+model Candidacy {
+  id              String          @id @default(cuid())
+  electoralCycleId String
+  userId          String          // Gestionnaire de candidature
+  candidateName   String
+  partyName       String?
+  slogan          String?
+  photoUrl        String?
+  status          CandidateStatus @default(PENDING)
+  
+  // Documents requis
+  cautionReceipt  String? // URL du reçu de caution
+  criminalRecord  String? // URL du casier judiciaire
+  investitureDeclaration String? // URL de la déclaration d'investiture
+  
+  // Métadonnées
+  submittedAt DateTime @default(now())
+  reviewedAt  DateTime?
+  reviewedBy  String?
+  reviewNotes String?
+  
+  // Relations
+  electoralCycle ElectoralCycle @relation(fields: [electoralCycleId], references: [id])
+  manager        User           @relation(fields: [userId], references: [id])
+  sponsorships   Sponsorship[]
+  
+  @@map("candidacies")
+}
+
+// Parrainages
+model Sponsorship {
+  id              String            @id @default(cuid())
+  electoralCycleId String
+  candidacyId     String
+  citizenId       String
+  status          SponsorshipStatus @default(ACTIVE)
+  
+  // Validation et sécurité
+  ipAddress       String
+  userAgent       String?
+  geoLocation     String?
+  
+  // Contestation
+  contestedAt     DateTime?
+  contestReason   String?
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  // Relations
+  electoralCycle ElectoralCycle @relation(fields: [electoralCycleId], references: [id])
+  candidacy      Candidacy      @relation(fields: [candidacyId], references: [id])
+  citizen        User           @relation(fields: [citizenId], references: [id])
+  
+  // Un citoyen ne peut parrainer qu'un seul candidat par cycle électoral
+  @@unique([electoralCycleId, citizenId])
+  @@map("sponsorships")
+}
+
+// Signalements de fraude
+model FraudReport {
+  id             String   @id @default(cuid())
+  reporterId     String
+  sponsorshipId  String
+  reason         String
+  description    String?
+  status         String   @default("PENDING") // PENDING, INVESTIGATING, RESOLVED, DISMISSED
+  
+  createdAt DateTime @default(now())
+  updatedAt DateTime @updatedAt
+  
+  @@map("fraud_reports")
+}
+
+// Audit trail immuable (accessible uniquement par Super Admin DGE)
+model AuditLog {
+  id        String      @id @default(cuid())
+  userId    String
+  action    AuditAction
+  resource  String      // table/model concerné
+  resourceId String?    // ID de la ressource
+  oldData   Json?       // Données avant modification
+  newData   Json?       // Données après modification
+  ipAddress String
+  userAgent String?
+  
+  createdAt DateTime @default(now())
+  
+  user User @relation(fields: [userId], references: [id])
+  
+  @@map("audit_logs")
+}
+
+// Configuration système
+model SystemConfig {
+  id    String @id @default(cuid())
+  key   String @unique
+  value String
+  
+  updatedAt DateTime @updatedAt
+  
+  @@map("system_config")
+}

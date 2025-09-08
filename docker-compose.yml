@@ -1,0 +1,107 @@
+version: '3.8'
+
+services:
+  # Base de données PostgreSQL
+  postgres:
+    image: postgres:15-alpine
+    restart: unless-stopped
+    environment:
+      POSTGRES_USER: eparrainages
+      POSTGRES_PASSWORD: secure_password_2024
+      POSTGRES_DB: e_parrainages
+    volumes:
+      - postgres_data:/var/lib/postgresql/data
+      - ./backend/prisma/init.sql:/docker-entrypoint-initdb.d/init.sql
+    ports:
+      - "5432:5432"
+    networks:
+      - eparrainages_network
+
+  # Backend API
+  backend:
+    build:
+      context: ./backend
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      NODE_ENV: production
+      DATABASE_URL: postgresql://eparrainages:secure_password_2024@postgres:5432/e_parrainages?schema=public
+      JWT_SECRET: super-secret-jwt-key-production-2024
+      PORT: 3001
+    ports:
+      - "3001:3001"
+    depends_on:
+      - postgres
+    networks:
+      - eparrainages_network
+    volumes:
+      - ./backend/uploads:/app/uploads
+      - ./backend/logs:/app/logs
+
+  # DGE Admin Web App
+  dge-admin:
+    build:
+      context: ./apps/dge-admin
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      BACKEND_URL: http://backend:3001
+      NEXT_PUBLIC_API_URL: http://localhost:3001
+    ports:
+      - "3000:3000"
+    depends_on:
+      - backend
+    networks:
+      - eparrainages_network
+
+  # Mandataires Web App
+  mandataires-web:
+    build:
+      context: ./apps/mandataires-web
+      dockerfile: Dockerfile
+    restart: unless-stopped
+    environment:
+      BACKEND_URL: http://backend:3001
+      NEXT_PUBLIC_API_URL: http://localhost:3001
+    ports:
+      - "3002:3002"
+    depends_on:
+      - backend
+    networks:
+      - eparrainages_network
+
+  # Redis pour la cache et sessions
+  redis:
+    image: redis:7-alpine
+    restart: unless-stopped
+    ports:
+      - "6379:6379"
+    networks:
+      - eparrainages_network
+    volumes:
+      - redis_data:/data
+
+  # Nginx reverse proxy
+  nginx:
+    image: nginx:alpine
+    restart: unless-stopped
+    ports:
+      - "80:80"
+      - "443:443"
+    volumes:
+      - ./nginx.conf:/etc/nginx/nginx.conf
+      - ./ssl:/etc/ssl/certs
+    depends_on:
+      - backend
+      - dge-admin
+      - mandataires-web
+    networks:
+      - eparrainages_network
+
+volumes:
+  postgres_data:
+  redis_data:
+
+networks:
+  eparrainages_network:
+    driver: bridge

@@ -1,32 +1,86 @@
-# If you prefer the allow list template instead of the deny list, see community template:
-# https://github.com/github/gitignore/blob/main/community/Golang/Go.AllowList.gitignore
-#
-# Binaries for programs and plugins
-*.exe
-*.exe~
-*.dll
-*.so
-*.dylib
+# Dependencies
+node_modules/
+/.pnp
+.pnp.js
 
-# Test binary, built with `go test -c`
-*.test
+# Testing
+/coverage
+*.lcov
 
-# Code coverage profiles and other test artifacts
-*.out
-coverage.*
-*.coverprofile
-profile.cov
+# Next.js
+.next/
+out/
 
-# Dependency directories (remove the comment below to include it)
-# vendor/
+# Production
+/build
+/dist
 
-# Go workspace file
-go.work
-go.work.sum
+# Misc
+.DS_Store
+*.pem
 
-# env file
+# Debug
+npm-debug.log*
+yarn-debug.log*
+yarn-error.log*
+
+# Local env files
 .env
+.env*.local
+
+# Vercel
+.vercel
+
+# TypeScript
+*.tsbuildinfo
+next-env.d.ts
+
+# Prisma
+/prisma/migrations/
+
+# Flutter/Dart
+# Files and directories created by pub
+.dart_tool/
+.packages
+build/
+# Remove the following pattern if you wish to check in your lock file
+pubspec.lock
+
+# Conventional directory for build output
+.flutter-plugins
+.flutter-plugins-dependencies
+.pub-cache/
+.pub/
+
+# Android
+*.jks
+*.keystore
+
+# iOS
+*.ipa
+*.app
+*.dSYM.zip
+*.dSYM
 
 # Editor/IDE
-# .idea/
-# .vscode/
+.idea/
+.vscode/
+*.swp
+*.swo
+*~
+
+# Logs
+logs
+*.log
+
+# Docker
+.dockerignore
+
+# OS
+.DS_Store
+Thumbs.db
+
+# Temporary files
+*.tmp
+*.temp
+/tmp/
